@@ -1,0 +1,13 @@
+{
+  "name": "monitex-sentinel",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:web": "yarn workspace web dev",
+    "dev:api": "yarn workspace api dev",
+    "dev": "concurrently \"yarn dev:api\" \"yarn dev:web\""
+  }
+}

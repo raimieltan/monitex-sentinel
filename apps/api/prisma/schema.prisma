@@ -1,0 +1,42 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Event {
+  id                String   @id @default(cuid())
+  eventId           String   @unique
+  siteId            String
+  zone              String
+  type              String
+  source            String
+  confidence        Float?
+  timestamp         DateTime
+  snapshotUrl       String?
+  metadata          Json?
+
+  triageStatus      String   @default("PENDING")
+  severity          String?
+  threatAssessment  String?
+  summary           String?
+  recommendedAction String?
+  llmLatencyMs      Int?
+  llmModel          String?
+  llmError          String?
+
+  operatorStatus    String   @default("OPEN")
+  acknowledgedAt    DateTime?
+  resolvedAt        DateTime?
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([severity])
+  @@index([siteId])
+  @@index([timestamp])
+  @@index([operatorStatus])
+}
