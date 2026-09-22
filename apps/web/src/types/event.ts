@@ -24,3 +24,35 @@ export interface SentinelEvent {
   createdAt: string;
   updatedAt: string;
 }
+
+export type Severity = NonNullable<SentinelEvent["severity"]>;
+export type OperatorStatus = SentinelEvent["operatorStatus"];
+export type TriageStatus = SentinelEvent["triageStatus"];
+
+export type CameraStreamStatus =
+  | "CONNECTING"
+  | "LIVE"
+  | "BUFFERING"
+  | "OFFLINE"
+  | "RECONNECTING"
+  | "UNAVAILABLE";
+
+export interface CameraReference {
+  id: string;
+  name: string;
+  zone: string;
+}
+
+export interface DetectionOverlay {
+  id: string;
+  label: string;
+  confidence: number;
+  bbox: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+}
+
+export type ConnectionStatus = "CONNECTED" | "RECONNECTING" | "DISCONNECTED";
