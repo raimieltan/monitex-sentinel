@@ -1,3 +1,7 @@
+"use client";
+
+import { useState } from "react";
+import { acknowledgeEvent, resolveEvent } from "@/lib/api";
 import type { SentinelEvent } from "@/types/event";
 
 const SEVERITY_STYLES: Record<string, string> = {
@@ -25,6 +29,35 @@ function formatTimestamp(iso: string): string {
 export function EventCard({ event }: { event: SentinelEvent }) {
   const isTriaging = event.triageStatus === "PENDING" || event.triageStatus === "IN_PROGRESS";
   const cardStyle = event.severity ? SEVERITY_STYLES[event.severity] : "border-zinc-200 bg-white dark:bg-zinc-900 dark:border-zinc-800";
+
+  const [pending, setPending] = useState<"acknowledge" | "resolve" | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  async function handleAcknowledge() {
+    setPending("acknowledge");
+    setActionError(null);
+    try {
+      await acknowledgeEvent(event.id);
+      // No local state mutation here — the `event:updated` broadcast updates
+      // this card via the parent's socket-driven state.
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "failed to acknowledge event");
+    } finally {
+      setPending(null);
+    }
+  }
+
+  async function handleResolve() {
+    setPending("resolve");
+    setActionError(null);
+    try {
+      await resolveEvent(event.id);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "failed to resolve event");
+    } finally {
+      setPending(null);
+    }
+  }
 
   return (
     <div className={`rounded-lg border p-4 ${cardStyle}`}>
@@ -68,6 +101,29 @@ export function EventCard({ event }: { event: SentinelEvent }) {
 
       <div className="mt-3 flex items-center justify-between text-xs text-zinc-400">
         <span>Operator: {event.operatorStatus}</span>
+        <div className="flex items-center gap-2">
+          {actionError && <span className="text-red-600 dark:text-red-400">{actionError}</span>}
+          {event.operatorStatus === "OPEN" && (
+            <button
+              type="button"
+              onClick={handleAcknowledge}
+              disabled={pending !== null}
+              className="rounded border border-zinc-300 px-2 py-1 font-medium text-zinc-700 hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+            >
+              {pending === "acknowledge" ? "Acknowledging…" : "Acknowledge"}
+            </button>
+          )}
+          {event.operatorStatus !== "RESOLVED" && (
+            <button
+              type="button"
+              onClick={handleResolve}
+              disabled={pending !== null}
+              className="rounded border border-zinc-300 px-2 py-1 font-medium text-zinc-700 hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+            >
+              {pending === "resolve" ? "Resolving…" : "Resolve"}
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
