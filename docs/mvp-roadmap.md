@@ -274,7 +274,12 @@ Per spec §25 — do not start these before Slices 1–6 are done.
 - ⬜ Operator false-positive feedback loop.
 - ⬜ AI latency/cost metrics.
 - ⬜ Basic authentication.
-- ⬜ YOLO/object tracking, zone/tripwire detection in the video worker.
+- ✅ YOLO/object detection in the video worker — done post-Slice-6:
+  `worker.py` runs a real YOLOv5-nano (ONNX, `cv2.dnn`) forward pass on
+  motion-triggering frames and reports `object_detected` events with real
+  pixel-space bounding boxes, merged into the same ingestion pipeline. See
+  `apps/video-worker/AGENTS.md`.
+- ⬜ Zone/tripwire detection in the video worker.
 
 ---
 

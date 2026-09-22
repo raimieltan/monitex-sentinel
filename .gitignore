@@ -10,6 +10,7 @@ __pycache__
 *.pyc
 
 apps/video-worker/sample.mp4
+apps/video-worker/models/*.onnx
 
 .DS_Store
 
