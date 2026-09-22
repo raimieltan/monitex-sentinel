@@ -7,16 +7,14 @@ import type { SentinelEvent } from "@/types/event";
 
 const SEVERITY_STYLES: Record<string, string> = {
   critical: "border-red-500 bg-red-50 ring-2 ring-red-500 dark:bg-red-950/40",
-  high: "border-orange-400 bg-orange-50 dark:bg-orange-950/30",
-  medium: "border-yellow-400 bg-yellow-50 dark:bg-yellow-950/20",
-  low: "border-zinc-300 bg-white dark:bg-zinc-900 dark:border-zinc-700",
+  warning: "border-yellow-400 bg-yellow-50 dark:bg-yellow-950/20",
+  info: "border-zinc-300 bg-white dark:bg-zinc-900 dark:border-zinc-700",
 };
 
 const SEVERITY_BADGE_STYLES: Record<string, string> = {
   critical: "bg-red-600 text-white",
-  high: "bg-orange-500 text-white",
-  medium: "bg-yellow-500 text-black",
-  low: "bg-zinc-400 text-white",
+  warning: "bg-yellow-500 text-black",
+  info: "bg-zinc-400 text-white",
 };
 
 function formatType(type: string): string {

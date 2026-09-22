@@ -2,7 +2,7 @@ import OpenAI from "openai";
 import { env } from "../config/env.js";
 import type { EventRecord } from "./eventService.js";
 
-export const SEVERITIES = ["low", "medium", "high", "critical"] as const;
+export const SEVERITIES = ["info", "warning", "critical"] as const;
 export type Severity = (typeof SEVERITIES)[number];
 
 export interface TriageResult {
@@ -28,16 +28,15 @@ export class StubTriageProvider implements TriageProvider {
     const highSeverityTypes = new Set(["fire_alarm", "panic_button", "glass_break", "perimeter_breach"]);
     const confidence = event.confidence ?? 0.5;
 
-    let severity: Severity = "low";
+    let severity: Severity = "info";
     if (highSeverityTypes.has(event.type) && confidence >= 0.6) severity = "critical";
-    else if (highSeverityTypes.has(event.type)) severity = "high";
-    else if (confidence >= 0.7) severity = "medium";
+    else if (highSeverityTypes.has(event.type) || confidence >= 0.7) severity = "warning";
 
     return {
       severity,
       threatAssessment: `Stub triage: ${event.type} reported by ${event.source} at zone ${event.zone} (confidence ${confidence}).`,
       summary: `${event.type.replace(/_/g, " ")} at ${event.zone}`,
-      recommendedAction: severity === "critical" || severity === "high" ? "Dispatch operator to verify immediately" : "Monitor and review during routine check",
+      recommendedAction: severity === "critical" ? "Dispatch operator to verify immediately" : severity === "warning" ? "Review promptly and verify if pattern continues" : "Monitor and review during routine check",
       model: "stub-rule-based",
     };
   }
@@ -46,7 +45,7 @@ export class StubTriageProvider implements TriageProvider {
 const TRIAGE_SYSTEM_PROMPT = `You are a security operations triage assistant for an alarm monitoring platform.
 Given a single sensor/camera event, assess its severity and recommend an action.
 Respond with strict JSON only, matching this shape:
-{"severity":"low"|"medium"|"high"|"critical","threatAssessment":string,"summary":string,"recommendedAction":string}`;
+{"severity":"info"|"warning"|"critical","threatAssessment":string,"summary":string,"recommendedAction":string}`;
 
 export class OpenAITriageProvider implements TriageProvider {
   private client: OpenAI;

@@ -12,7 +12,7 @@ export interface SentinelEvent {
   metadata: Record<string, unknown> | null;
 
   triageStatus: "PENDING" | "IN_PROGRESS" | "COMPLETE" | "FAILED";
-  severity: "low" | "medium" | "high" | "critical" | null;
+  severity: "info" | "warning" | "critical" | null;
   threatAssessment: string | null;
   summary: string | null;
   recommendedAction: string | null;

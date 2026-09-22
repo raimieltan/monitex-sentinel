@@ -7,15 +7,14 @@ import type { SentinelEvent } from "@/types/event";
 
 const SEVERITY_RANK: Record<string, number> = {
   critical: 0,
-  high: 1,
-  medium: 2,
-  low: 3,
+  warning: 1,
+  info: 2,
 };
 
 function severityRank(event: SentinelEvent): number {
   // Untriaged events (severity still null) sort after everything triaged,
   // ahead of nothing — they just haven't been assessed yet.
-  return event.severity ? (SEVERITY_RANK[event.severity] ?? 4) : 4;
+  return event.severity ? (SEVERITY_RANK[event.severity] ?? 3) : 3;
 }
 
 function sortEvents(events: SentinelEvent[]): SentinelEvent[] {

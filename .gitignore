@@ -9,6 +9,8 @@ dist
 __pycache__
 *.pyc
 
+apps/video-worker/sample.mp4
+
 .DS_Store
 
 .claude

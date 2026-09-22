@@ -3,7 +3,9 @@
 Living document. Update checkboxes and status as work lands — this is not a
 one-shot plan, keep it in sync with reality.
 
-**Spec:** `docs/monitex-sentinel.md`
+**Spec:** `docs/monitex-sentinel.md` (internal paraphrase) /
+`Monitex_Technical_Assessment.pdf` (repo root — the actual take-home brief;
+authoritative where the two differ)
 **Architecture / conventions:** `AGENTS.md` (repo root)
 
 Each slice below is a vertically-complete piece of the system: it produces
@@ -11,6 +13,15 @@ something demoable end-to-end, not just one layer. Slices are ordered by
 dependency, not importance — do them roughly in order.
 
 Status legend: ✅ done · 🚧 in progress · ⬜ not started
+
+**Fix log:** severity was implemented as a 4-level `low`/`medium`/`high`/
+`critical` scale in Slices 0–4; cross-checked against
+`Monitex_Technical_Assessment.pdf` and corrected to the spec's 3-level
+`info`/`warning`/`critical` scale (§3, §15) across
+`apps/api/src/services/triageProvider.ts`, `apps/web/src/types/event.ts`,
+`apps/web/src/hooks/useEvents.ts`, and `apps/web/src/components/EventCard.tsx`.
+Any events triaged before this fix will still have the old string values in
+the DB until re-triaged or the DB is reset.
 
 ---
 
@@ -76,11 +87,11 @@ WebSocket path already uses, without duplicating that logic.
 **Status: done and verified end-to-end.** Built `apps/web/src/lib/socket.ts`,
 `apps/web/src/lib/api.ts`, `apps/web/src/types/event.ts`,
 `apps/web/src/hooks/useEvents.ts`, `apps/web/src/components/EventCard.tsx`,
-and wired them into `apps/web/src/app/page.tsx`. Note: actual severity scale
-in the code is `low`/`medium`/`high`/`critical` (see
-`apps/api/src/services/triageProvider.ts`), not the `critical`/`warning`/
-`info` mentioned below — sorting follows the real 4-level scale. Verified
-with the full stack running (docker-compose, api, simulator, `yarn dev:web`):
+and wired them into `apps/web/src/app/page.tsx`. Severity scale is
+`info`/`warning`/`critical` per spec §3/§15 (see
+`apps/api/src/services/triageProvider.ts`); sorting follows that 3-level
+scale, critical first. Verified with the full stack running (docker-compose,
+api, simulator, `yarn dev:web`):
 simulator events land in the dashboard live, `GET /` renders 200 with the
 initial "Loading events…" SSR state (no errors), and `GET /events` matches
 what the socket feed delivers.
@@ -193,11 +204,19 @@ critical event."
 
 ---
 
-## Slice 5 — Video worker (`apps/video-worker`) ⬜
+## Slice 5 — Video worker (`apps/video-worker`) ✅
 
-`apps/video-worker/worker.py` is currently a 0-line stub; venv and
-`requirements.txt` are already set up. Depends on Slice 1
-(`POST /internal/events`).
+**Status: done and verified end-to-end.** `worker.py` loops a local sample
+MP4, samples every Nth frame, runs frame-differencing motion detection, and
+POSTs `motion_detected` events (`source: "camera"`) to
+`POST /internal/events` with a cooldown so continuous motion doesn't flood
+the pipeline. Added `generate_sample_video.py` (synthesizes a short looping
+clip locally — no external video download dependency); `sample.mp4` is
+gitignored and regenerated per checkout. Verified live: ran the worker
+against a generated sample, confirmed `motion_detected`/`source: camera`
+events persisted and triaged to `COMPLETE` identically to sensor events, and
+confirmed a missing `VIDEO_PATH` logs and retries instead of crashing.
+`AGENTS.md` rewritten with the real integration contract.
 
 **Files:**
 - Modify: `apps/video-worker/worker.py` — OpenCV capture loop over a
@@ -223,17 +242,21 @@ critical event."
 
 ---
 
-## Slice 6 — Local run polish & docs ⬜
+## Slice 6 — Local run polish & docs ✅
+
+**Status: done and verified end-to-end.** Root `README.md` updated: stack
+description, venv setup, and running steps now cover the video worker
+(including the one-time `generate_sample_video.py` step), services table
+adds video-worker, pipeline diagram shows it as a second producer into the
+shared `ingestEvent` path, and the REST table lists `POST /internal/events`.
+`apps/web/.env.example` and `apps/video-worker/.env.example` both exist.
+Sanity pass done by stopping every process and restarting all five pieces
+(docker-compose, api, simulator, web, video-worker) exactly per the README
+— confirmed `GET /health` and `GET /` both 200, and `GET /events` showed
+both `sensor`/`camera`-sourced simulator events and video-worker
+`motion_detected` events flowing end to end.
 
 Spec §21: must run locally from a clean checkout with documented setup.
-
-- Update root `README.md` with the video-worker startup step once Slice 5
-  lands (currently only simulator + api + web are documented).
-- Add `apps/web/.env.example` for `NEXT_PUBLIC_API_URL` if introduced in
-  Slice 2.
-- Sanity pass: clean `git clone`, follow the README verbatim, confirm all
-  four processes (docker-compose, api, simulator, web [+ video-worker])
-  come up and events flow end to end.
 
 ---
 
