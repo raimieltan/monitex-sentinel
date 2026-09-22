@@ -126,7 +126,17 @@ The single biggest remaining gap. `apps/web` is still the default
 
 ---
 
-## Slice 3 — Operator actions (acknowledge / resolve) ⬜
+## Slice 3 — Operator actions (acknowledge / resolve) ✅
+
+**Status: done and verified end-to-end.** `EventCard` now has "Acknowledge"
+(visible when `operatorStatus === "OPEN"`) and "Resolve" (visible when
+`operatorStatus !== "RESOLVED"`) buttons, calling the existing
+`acknowledgeEvent`/`resolveEvent` helpers in `apps/web/src/lib/api.ts`. No
+optimistic local mutation — buttons show a per-action loading state and the
+UI updates when `event:updated` lands, same as the roadmap called for. A
+failed request (e.g. 404) sets a visible inline error instead of a silent
+no-op. Verified via direct API calls: acknowledge/resolve flip
+`operatorStatus` and set `resolvedAt`, and a bad id returns `404`.
 
 **Files:**
 - Modify: `apps/web/src/components/EventCard.tsx` — "Acknowledge" button
@@ -150,7 +160,19 @@ The single biggest remaining gap. `apps/web` is still the default
 
 ---
 
-## Slice 4 — Critical alerting prominence ⬜
+## Slice 4 — Critical alerting prominence ✅
+
+**Status: done, logic verified via API; visual appearance not yet confirmed
+in an actual browser (no browser-automation tool available in this
+session).** Added distinct critical styling to `EventCard` (red ring +
+`AlertTriangle` icon next to the title, on top of the existing red
+border/badge from Slice 2) and a new `apps/web/src/components/CriticalBanner.tsx`
+mounted above the list in `page.tsx`, shown when ≥1 event has
+`severity === "critical" && operatorStatus === "OPEN"`. Verified via the API
+that posting a critical event and later resolving it correctly moves it in
+and out of that filter condition, and that the page still compiles/serves
+(200, no server errors) with the banner code path present. Recommend a
+manual visual check in-browser before considering this fully done.
 
 Spec §18: "the system must at minimum prominently surface any single
 critical event."

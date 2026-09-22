@@ -1,5 +1,6 @@
 "use client";
 
+import { CriticalBanner } from "@/components/CriticalBanner";
 import { EventCard } from "@/components/EventCard";
 import { useEvents } from "@/hooks/useEvents";
 
@@ -8,6 +9,7 @@ export default function Home() {
 
   return (
     <div className="flex flex-1 flex-col bg-zinc-50 dark:bg-black">
+      <CriticalBanner events={events} />
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-8 sm:px-6">
         <h1 className="mb-6 text-2xl font-semibold text-zinc-900 dark:text-zinc-50">Sentinel — Live Events</h1>
 

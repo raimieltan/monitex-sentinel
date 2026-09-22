@@ -1,11 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import { AlertTriangle } from "lucide-react";
 import { acknowledgeEvent, resolveEvent } from "@/lib/api";
 import type { SentinelEvent } from "@/types/event";
 
 const SEVERITY_STYLES: Record<string, string> = {
-  critical: "border-red-500 bg-red-50 dark:bg-red-950/40",
+  critical: "border-red-500 bg-red-50 ring-2 ring-red-500 dark:bg-red-950/40",
   high: "border-orange-400 bg-orange-50 dark:bg-orange-950/30",
   medium: "border-yellow-400 bg-yellow-50 dark:bg-yellow-950/20",
   low: "border-zinc-300 bg-white dark:bg-zinc-900 dark:border-zinc-700",
@@ -63,7 +64,10 @@ export function EventCard({ event }: { event: SentinelEvent }) {
     <div className={`rounded-lg border p-4 ${cardStyle}`}>
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h3 className="font-semibold capitalize text-zinc-900 dark:text-zinc-50">{formatType(event.type)}</h3>
+          <h3 className="flex items-center gap-1.5 font-semibold capitalize text-zinc-900 dark:text-zinc-50">
+            {event.severity === "critical" && <AlertTriangle className="h-4 w-4 shrink-0 text-red-600" aria-hidden />}
+            {formatType(event.type)}
+          </h3>
           <p className="text-sm text-zinc-500 dark:text-zinc-400">
             {event.siteId} · {event.zone} · via {event.source}
             {event.confidence !== null && ` · ${Math.round(event.confidence * 100)}% confidence`}
