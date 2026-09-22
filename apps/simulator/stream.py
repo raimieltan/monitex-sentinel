@@ -1,11 +1,17 @@
 """
 Sentinel event simulator.
 
-Serves a WebSocket at ws://localhost:8765 and pushes randomly generated
-sensor/camera events to every connected client (the API's ingestion
-service). Occasionally fires a "burst" of several events in quick
-succession, and occasionally emits a deliberately malformed event, to
-exercise the API's validation and burst-handling behavior.
+Serves a WebSocket at ws://localhost:8765. Occasionally fires a "burst" of
+several events in quick succession, and occasionally emits a deliberately
+malformed event, to exercise the API's validation and burst-handling
+behavior.
+
+Streaming is off by default — a connected client (the API) must opt in by
+sending a control command, so a demo doesn't burn through a triage
+provider's rate limit before anyone clicks anything:
+  {"cmd": "auto_on"}                     start continuous streaming
+  {"cmd": "auto_off"}                    stop continuous streaming
+  {"cmd": "manual_burst", "count": 5}    send exactly `count` events once
 
 Pacing is configurable via env vars (see .env.example) — turn burst
 frequency/size down or widen the inter-event delay if a downstream LLM
@@ -47,7 +53,6 @@ EVENT_TYPES = [
     "glass_break",
     "smoke_detected",
     "fire_alarm",
-    "object_detected",
     "loitering",
     "camera_offline",
     "sensor_fault",
@@ -88,22 +93,60 @@ def make_event(force_invalid: bool = False) -> dict:
     return event
 
 
+async def send_events(websocket, count: int) -> None:
+    for _ in range(count):
+        force_invalid = random.random() < INVALID_EVENT_PROBABILITY
+        await websocket.send(json.dumps(make_event(force_invalid)))
+        await asyncio.sleep(BURST_INTERVAL_SECONDS)
+
+
+async def auto_loop(websocket, state: dict) -> None:
+    """Continuous streaming, only while state['auto'] is True."""
+    while True:
+        if not state["auto"]:
+            await asyncio.sleep(0.2)
+            continue
+
+        # Occasional burst of events to exercise queueing under load.
+        if random.random() < BURST_PROBABILITY:
+            burst_size = random.randint(BURST_MIN_SIZE, BURST_MAX_SIZE)
+            print(f"[simulator] emitting burst of {burst_size} events")
+            await send_events(websocket, burst_size)
+        else:
+            force_invalid = random.random() < INVALID_EVENT_PROBABILITY
+            await websocket.send(json.dumps(make_event(force_invalid)))
+
+        await asyncio.sleep(random.uniform(EVENT_INTERVAL_MIN_SECONDS, EVENT_INTERVAL_MAX_SECONDS))
+
+
+async def command_listener(websocket, state: dict) -> None:
+    async for raw in websocket:
+        try:
+            msg = json.loads(raw)
+        except json.JSONDecodeError:
+            print(f"[simulator] ignored non-JSON command: {raw!r}")
+            continue
+
+        cmd = msg.get("cmd")
+        if cmd == "auto_on":
+            state["auto"] = True
+            print("[simulator] auto mode ON")
+        elif cmd == "auto_off":
+            state["auto"] = False
+            print("[simulator] auto mode OFF")
+        elif cmd == "manual_burst":
+            count = max(1, min(int(msg.get("count", 5)), 20))
+            print(f"[simulator] manual stream of {count} events")
+            await send_events(websocket, count)
+        else:
+            print(f"[simulator] ignored unknown command: {msg!r}")
+
+
 async def producer(websocket):
     print(f"[simulator] client connected: {websocket.remote_address}")
+    state = {"auto": False}
     try:
-        while True:
-            # Occasional burst of events to exercise queueing under load.
-            if random.random() < BURST_PROBABILITY:
-                burst_size = random.randint(BURST_MIN_SIZE, BURST_MAX_SIZE)
-                print(f"[simulator] emitting burst of {burst_size} events")
-                for _ in range(burst_size):
-                    await websocket.send(json.dumps(make_event()))
-                    await asyncio.sleep(BURST_INTERVAL_SECONDS)
-            else:
-                force_invalid = random.random() < INVALID_EVENT_PROBABILITY
-                await websocket.send(json.dumps(make_event(force_invalid)))
-
-            await asyncio.sleep(random.uniform(EVENT_INTERVAL_MIN_SECONDS, EVENT_INTERVAL_MAX_SECONDS))
+        await asyncio.gather(auto_loop(websocket, state), command_listener(websocket, state))
     except websockets.exceptions.ConnectionClosed:
         print(f"[simulator] client disconnected: {websocket.remote_address}")
 

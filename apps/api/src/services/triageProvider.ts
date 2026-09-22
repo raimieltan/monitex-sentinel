@@ -115,31 +115,59 @@ function parseTriageJson(raw: string): Partial<TriageResult> {
   }
 }
 
+// How long to skip a provider entirely after it trips the breaker —
+// free-tier/shared endpoints (e.g. NVIDIA's integrate API, OpenRouter's
+// free models) can stay overloaded for a while, so retrying every single
+// event is wasted latency on a call we already expect to fail.
+const BREAKER_COOLDOWN_MS = 60_000;
+
+interface ChainEntry {
+  label: string;
+  provider: TriageProvider;
+  breakerOpenUntil: number;
+}
+
 /**
- * Wraps a real LLM provider and degrades to the deterministic stub the
- * moment it hits a rate limit (e.g. OpenRouter's free-tier daily/per-minute
- * caps). A 429 won't clear up within a BullMQ retry's backoff window, so
- * retrying the same call is pointless — better to fall back immediately and
- * keep the event moving than to burn all 3 attempts into a FAILED dead end.
+ * Tries a list of real LLM providers in order and degrades to the
+ * deterministic stub once all of them are unavailable. Each entry gets its
+ * own circuit breaker: a rate limit or transient server error (e.g.
+ * OpenRouter's free-tier caps, or NVIDIA's shared endpoint returning 503
+ * under load) trips that entry's breaker for BREAKER_COOLDOWN_MS, so a
+ * known-bad provider/model is skipped on subsequent events instead of
+ * re-attempting a call we already expect to fail — falling through to the
+ * next entry in the chain (or the stub) immediately.
+ *
+ * This also naturally supports multiple models against the same provider
+ * (e.g. two NVIDIA models) — a 503 on the shared endpoint isn't always
+ * model-specific, but trying a different model is a cheap, useful second
+ * attempt before giving up on real triage entirely for that event.
+ *
  * Other error types (timeouts, bad JSON, network blips) still propagate to
  * the caller so BullMQ's normal retry/backoff applies.
  */
-export class RateLimitFallbackTriageProvider implements TriageProvider {
-  private primary: TriageProvider;
-  private fallback: TriageProvider = new StubTriageProvider();
+export class FallbackChainTriageProvider implements TriageProvider {
+  private chain: ChainEntry[];
+  private stub: TriageProvider = new StubTriageProvider();
 
-  constructor(primary: TriageProvider) {
-    this.primary = primary;
+  constructor(entries: { label: string; provider: TriageProvider }[]) {
+    this.chain = entries.map((e) => ({ ...e, breakerOpenUntil: 0 }));
   }
 
   async triage(event: EventRecord): Promise<TriageResult> {
-    try {
-      return await this.primary.triage(event);
-    } catch (err) {
-      if (!(err instanceof OpenAI.RateLimitError)) throw err;
-      console.warn(`[triage] rate limited, falling back to stub for event ${event.eventId}: ${err.message}`);
-      return this.fallback.triage(event);
+    const now = Date.now();
+    for (const entry of this.chain) {
+      if (now < entry.breakerOpenUntil) continue;
+      try {
+        return await entry.provider.triage(event);
+      } catch (err) {
+        if (!(err instanceof OpenAI.RateLimitError) && !(err instanceof OpenAI.InternalServerError)) throw err;
+        entry.breakerOpenUntil = Date.now() + BREAKER_COOLDOWN_MS;
+        console.warn(
+          `[triage] ${entry.label} ${err instanceof OpenAI.RateLimitError ? "rate limited" : "errored"}, skipping for ${BREAKER_COOLDOWN_MS / 1000}s (event ${event.eventId}): ${err.message}`,
+        );
+      }
     }
+    return this.stub.triage(event);
   }
 }
 
@@ -147,20 +175,41 @@ let provider: TriageProvider | undefined;
 
 export function getTriageProvider(): TriageProvider {
   if (!provider) {
+    const chain: { label: string; provider: TriageProvider }[] = [];
+
     if (env.NVIDIA_API_KEY) {
-      provider = new RateLimitFallbackTriageProvider(
-        new OpenAICompatibleTriageProvider(env.NVIDIA_API_KEY, env.NVIDIA_MODEL, "https://integrate.api.nvidia.com/v1"),
-      );
-    } else if (env.OPENROUTER_API_KEY) {
-      provider = new RateLimitFallbackTriageProvider(
-        new OpenAICompatibleTriageProvider(env.OPENROUTER_API_KEY, env.OPENROUTER_MODEL, "https://openrouter.ai/api/v1"),
-      );
-    } else if (env.OPENAI_API_KEY) {
-      provider = new RateLimitFallbackTriageProvider(new OpenAICompatibleTriageProvider(env.OPENAI_API_KEY, env.TRIAGE_MODEL));
-    } else {
-      provider = new StubTriageProvider();
+      chain.push({
+        label: `nvidia:${env.NVIDIA_MODEL}`,
+        provider: new OpenAICompatibleTriageProvider(env.NVIDIA_API_KEY, env.NVIDIA_MODEL, "https://integrate.api.nvidia.com/v1"),
+      });
+      if (env.NVIDIA_FALLBACK_MODEL) {
+        chain.push({
+          label: `nvidia:${env.NVIDIA_FALLBACK_MODEL}`,
+          provider: new OpenAICompatibleTriageProvider(env.NVIDIA_API_KEY, env.NVIDIA_FALLBACK_MODEL, "https://integrate.api.nvidia.com/v1"),
+        });
+      }
     }
-    console.log(`[triage] using provider: ${provider.constructor.name}`);
+    if (env.GROQ_API_KEY) {
+      chain.push({
+        label: `groq:${env.GROQ_MODEL}`,
+        provider: new OpenAICompatibleTriageProvider(env.GROQ_API_KEY, env.GROQ_MODEL, "https://api.groq.com/openai/v1"),
+      });
+    }
+    if (env.OPENROUTER_API_KEY) {
+      chain.push({
+        label: `openrouter:${env.OPENROUTER_MODEL}`,
+        provider: new OpenAICompatibleTriageProvider(env.OPENROUTER_API_KEY, env.OPENROUTER_MODEL, "https://openrouter.ai/api/v1"),
+      });
+    }
+    if (env.OPENAI_API_KEY) {
+      chain.push({
+        label: `openai:${env.TRIAGE_MODEL}`,
+        provider: new OpenAICompatibleTriageProvider(env.OPENAI_API_KEY, env.TRIAGE_MODEL),
+      });
+    }
+
+    provider = chain.length > 0 ? new FallbackChainTriageProvider(chain) : new StubTriageProvider();
+    console.log(`[triage] using provider: ${chain.length > 0 ? `chain [${chain.map((c) => c.label).join(" -> ")}]` : "stub-rule-based"}`);
   }
   return provider;
 }

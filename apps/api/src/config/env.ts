@@ -17,12 +17,18 @@ export const env = {
 
   SIMULATOR_WS_URL: optional("SIMULATOR_WS_URL", "ws://localhost:8765"),
 
-  // Triage prefers NVIDIA's integrate API if configured (highest free rate
-  // limit: 40 RPM / 10,000 RPD), then OpenRouter, then OpenAI, then falls
-  // back to a deterministic stub provider — the pipeline runs end-to-end
-  // either way. See services/triageProvider.ts's getTriageProvider().
+  // Triage tries a chain of providers in order — NVIDIA's integrate API
+  // (highest free rate limit: 40 RPM / 10,000 RPD) with a second model as
+  // an in-house fallback (NVIDIA's shared endpoint can 503 under load
+  // independent of any one model), then Groq, then OpenRouter, then OpenAI,
+  // then falls back to a deterministic stub provider — the pipeline runs
+  // end-to-end either way. See services/triageProvider.ts's
+  // getTriageProvider().
   NVIDIA_API_KEY: process.env.NVIDIA_API_KEY ?? "",
   NVIDIA_MODEL: optional("NVIDIA_MODEL", "nvidia/nemotron-3-super-120b-a12b"),
+  NVIDIA_FALLBACK_MODEL: optional("NVIDIA_FALLBACK_MODEL", "moonshotai/kimi-k3"),
+  GROQ_API_KEY: process.env.GROQ_API_KEY ?? "",
+  GROQ_MODEL: optional("GROQ_MODEL", "openai/gpt-oss-20b"),
   OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY ?? "",
   OPENROUTER_MODEL: optional("OPENROUTER_MODEL", "nvidia/nemotron-3-super-120b-a12b:free"),
   OPENAI_API_KEY: process.env.OPENAI_API_KEY ?? "",

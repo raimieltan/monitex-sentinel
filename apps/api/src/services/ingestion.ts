@@ -7,6 +7,64 @@ import { persistEvent } from "./eventService.js";
 
 const RECONNECT_DELAY_MS = 3000;
 
+// The simulator no longer streams by default (see apps/simulator/stream.py)
+// — it waits for one of these control commands so a demo doesn't burn
+// through a triage provider's rate limit before anyone clicks a dev
+// button. Tracked as the currently-open socket so REST routes can reach it.
+let simulatorSocket: WebSocket | null = null;
+
+// Mirrors the simulator's auto-stream state so other producers (the video
+// worker, which polls this over REST — see GET /internal/simulator/status —
+// since it has no persistent connection to push a command to) stay silent
+// by default too, instead of only the simulator respecting the dev toggle.
+let autoModeEnabled = false;
+
+// The video worker doesn't emit events on a schedule the way the simulator
+// does — it only has something to report when its motion detector actually
+// fires, whenever that happens to be. So a "manual burst" for video can't
+// be pushed like the simulator's (send N events now); instead it's a
+// credit balance the worker draws down one at a time, via
+// POST /internal/simulator/video-armed, as real detections occur.
+let videoBurstCredits = 0;
+
+/** Adds `count` manual-stream credits for the video worker to draw down as detections occur. */
+export function addVideoBurstCredits(count: number): void {
+  videoBurstCredits += count;
+}
+
+/** Called by the video worker before each report: true if it should post (auto mode, or a burst credit consumed). */
+export function consumeVideoStreamPermit(): boolean {
+  if (autoModeEnabled) return true;
+  if (videoBurstCredits > 0) {
+    videoBurstCredits -= 1;
+    return true;
+  }
+  return false;
+}
+
+function sendSimulatorCommand(cmd: Record<string, unknown>): boolean {
+  if (!simulatorSocket || simulatorSocket.readyState !== WebSocket.OPEN) return false;
+  simulatorSocket.send(JSON.stringify(cmd));
+  return true;
+}
+
+/** Turns the simulator's continuous auto-stream on or off. Returns false if the simulator isn't connected. */
+export function setSimulatorAutoMode(enabled: boolean): boolean {
+  const ok = sendSimulatorCommand({ cmd: enabled ? "auto_on" : "auto_off" });
+  if (ok) autoModeEnabled = enabled;
+  return ok;
+}
+
+/** Whether auto mode is currently on — other event producers (e.g. the video worker) poll this. */
+export function isAutoModeEnabled(): boolean {
+  return autoModeEnabled;
+}
+
+/** Requests a one-off burst of `count` events from the simulator. Returns false if the simulator isn't connected. */
+export function triggerSimulatorBurst(count: number): boolean {
+  return sendSimulatorCommand({ cmd: "manual_burst", count });
+}
+
 /**
  * Runs the shared validate -> persist -> enqueue -> broadcast pipeline for a
  * single already-parsed event payload. Used by both the WebSocket handler
@@ -63,6 +121,7 @@ export function startIngestion(): void {
 function connect(): void {
   console.log(`[ingestion] connecting to simulator at ${env.SIMULATOR_WS_URL}`);
   const ws = new WebSocket(env.SIMULATOR_WS_URL);
+  simulatorSocket = ws;
 
   ws.on("open", () => {
     console.log("[ingestion] connected to simulator");
@@ -77,6 +136,7 @@ function connect(): void {
   });
 
   ws.on("close", () => {
+    if (simulatorSocket === ws) simulatorSocket = null;
     console.warn(`[ingestion] disconnected from simulator, retrying in ${RECONNECT_DELAY_MS}ms`);
     setTimeout(connect, RECONNECT_DELAY_MS);
   });

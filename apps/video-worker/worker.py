@@ -12,6 +12,15 @@ goes through `POST /internal/events` on the API, the same ingestion
 pipeline the simulator feeds, so it's triaged and displayed exactly like a
 sensor event.
 
+Like the simulator, this worker is silent by default: before each report it
+calls `POST /internal/simulator/video-armed` and only posts if that grants
+permission (see apps/api/src/services/ingestion.ts) — either because the
+dashboard's "Auto Mode" toggle is on, or because the "Stream CCTV" dev
+button granted it manual-stream credits, drawn down one at a time as
+motion is actually detected. Either way, a demo doesn't start streaming
+(and burning a triage provider's rate limit) before anyone's clicked
+anything.
+
 The detector's weights (~4MB ONNX file) aren't checked into the repo —
 they're downloaded once into `models/` on first run and cached there. If
 they can't be fetched (no network on first run), the worker logs a warning
@@ -170,7 +179,27 @@ def motion_ratio(prev_gray: np.ndarray, gray: np.ndarray) -> float:
     return float(np.count_nonzero(thresholded)) / thresholded.size
 
 
+def streaming_armed() -> bool:
+    """Asks the API for permission to post: granted if Auto Mode is on, or
+    if a manual "Stream CCTV" credit is available and gets consumed here.
+
+    Fails safe: if the check itself fails (API down, network blip), treat
+    streaming as not armed rather than posting anyway.
+    """
+    try:
+        response = requests.post(f"{API_URL}/internal/simulator/video-armed", timeout=3)
+        response.raise_for_status()
+        return bool(response.json().get("armed", False))
+    except requests.RequestException as err:
+        print(f"[video-worker] could not check streaming permission ({err}); skipping this event")
+        return False
+
+
 def post_event(event_type: str, confidence: float, metadata: dict) -> None:
+    if not streaming_armed():
+        print(f"[video-worker] suppressed {event_type} (Auto Mode is off)")
+        return
+
     event = {
         "event_id": f"evt_{uuid.uuid4().hex[:10]}",
         "site_id": SITE_ID,

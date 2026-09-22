@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
 import { DashboardOverview } from "@/components/dashboard/dashboard-overview";
+import { DevControls } from "@/components/dashboard/dev-controls";
 import { EventInspectionColumn } from "@/components/dashboard/event-inspection-column";
 import { LiveAlarmsPanel } from "@/components/dashboard/live-alarms-panel";
 import { useAlarmEvents } from "@/hooks/useAlarmEvents";
@@ -44,6 +45,7 @@ export default function OperatorDashboardPage() {
   return (
     <div className="flex min-h-screen flex-col bg-slate-50">
       <DashboardHeader connectionStatus={connectionStatus} />
+      <DevControls />
       <DashboardOverview {...kpis} loading={loading} />
 
       <main className="flex flex-1 gap-4 px-6 pb-6">
