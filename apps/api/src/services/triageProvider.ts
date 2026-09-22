@@ -47,16 +47,23 @@ Given a single sensor/camera event, assess its severity and recommend an action.
 Respond with strict JSON only, matching this shape:
 {"severity":"info"|"warning"|"critical","threatAssessment":string,"summary":string,"recommendedAction":string}`;
 
-export class OpenAITriageProvider implements TriageProvider {
+/**
+ * Works against any OpenAI-compatible chat completions endpoint — used for
+ * both OpenAI itself and OpenRouter (same request/response shape, just a
+ * different baseURL and model namespace).
+ */
+export class OpenAICompatibleTriageProvider implements TriageProvider {
   private client: OpenAI;
+  private model: string;
 
-  constructor(apiKey: string) {
-    this.client = new OpenAI({ apiKey });
+  constructor(apiKey: string, model: string, baseURL?: string) {
+    this.client = new OpenAI({ apiKey, baseURL });
+    this.model = model;
   }
 
   async triage(event: EventRecord): Promise<TriageResult> {
     const completion = await this.client.chat.completions.create({
-      model: env.TRIAGE_MODEL,
+      model: this.model,
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: TRIAGE_SYSTEM_PROMPT },
@@ -75,11 +82,11 @@ export class OpenAITriageProvider implements TriageProvider {
     });
 
     const raw = completion.choices[0]?.message?.content;
-    if (!raw) throw new Error("OpenAI triage returned no content");
+    if (!raw) throw new Error("triage LLM returned no content");
 
-    const parsed = JSON.parse(raw) as Partial<TriageResult>;
+    const parsed = parseTriageJson(raw);
     if (!parsed.severity || !SEVERITIES.includes(parsed.severity)) {
-      throw new Error(`OpenAI triage returned invalid severity: ${parsed.severity}`);
+      throw new Error(`triage LLM returned invalid severity: ${parsed.severity}`);
     }
 
     return {
@@ -87,8 +94,24 @@ export class OpenAITriageProvider implements TriageProvider {
       threatAssessment: parsed.threatAssessment ?? "",
       summary: parsed.summary ?? "",
       recommendedAction: parsed.recommendedAction ?? "",
-      model: env.TRIAGE_MODEL,
+      model: this.model,
     };
+  }
+}
+
+/**
+ * Some OpenRouter models (especially free-tier ones) don't strictly honor
+ * `response_format: json_object` and wrap the JSON in prose/markdown
+ * fences. Try a strict parse first, then fall back to extracting the first
+ * {...} block, rather than treating every non-strict response as junk.
+ */
+function parseTriageJson(raw: string): Partial<TriageResult> {
+  try {
+    return JSON.parse(raw) as Partial<TriageResult>;
+  } catch {
+    const match = raw.match(/\{[\s\S]*\}/);
+    if (!match) throw new Error("triage LLM response did not contain JSON");
+    return JSON.parse(match[0]) as Partial<TriageResult>;
   }
 }
 
@@ -96,7 +119,13 @@ let provider: TriageProvider | undefined;
 
 export function getTriageProvider(): TriageProvider {
   if (!provider) {
-    provider = env.OPENAI_API_KEY ? new OpenAITriageProvider(env.OPENAI_API_KEY) : new StubTriageProvider();
+    if (env.OPENROUTER_API_KEY) {
+      provider = new OpenAICompatibleTriageProvider(env.OPENROUTER_API_KEY, env.OPENROUTER_MODEL, "https://openrouter.ai/api/v1");
+    } else if (env.OPENAI_API_KEY) {
+      provider = new OpenAICompatibleTriageProvider(env.OPENAI_API_KEY, env.TRIAGE_MODEL);
+    } else {
+      provider = new StubTriageProvider();
+    }
     console.log(`[triage] using provider: ${provider.constructor.name}`);
   }
   return provider;

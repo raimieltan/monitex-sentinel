@@ -17,8 +17,11 @@ export const env = {
 
   SIMULATOR_WS_URL: optional("SIMULATOR_WS_URL", "ws://localhost:8765"),
 
-  // If unset, triage falls back to a deterministic stub provider so the
-  // pipeline still works end-to-end without an OpenAI key.
+  // Triage prefers OpenRouter if configured, then falls back to OpenAI, then
+  // to a deterministic stub provider — the pipeline runs end-to-end either
+  // way. See services/triageProvider.ts's getTriageProvider().
+  OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY ?? "",
+  OPENROUTER_MODEL: optional("OPENROUTER_MODEL", "nvidia/nemotron-3-super-120b-a12b:free"),
   OPENAI_API_KEY: process.env.OPENAI_API_KEY ?? "",
   TRIAGE_MODEL: optional("TRIAGE_MODEL", "gpt-4o-mini"),
   TRIAGE_TIMEOUT_MS: Number(optional("TRIAGE_TIMEOUT_MS", "15000")),
