@@ -8,20 +8,13 @@ import { persistEvent } from "./eventService.js";
 const RECONNECT_DELAY_MS = 3000;
 
 /**
- * Handles a single raw message from the simulator (or, in future, any other
- * producer feeding the same pipeline). Never throws — a bad message is
- * logged and dropped so one malformed event can't take down the ingestion
- * connection or block the rest of the stream.
+ * Runs the shared validate -> persist -> enqueue -> broadcast pipeline for a
+ * single already-parsed event payload. Used by both the WebSocket handler
+ * and any REST producer (e.g. the video worker) that feeds the same
+ * pipeline. Never throws — a bad or failing event is logged and dropped so
+ * it can't take down ingestion or block the rest of the stream.
  */
-async function handleRawMessage(raw: WebSocket.RawData): Promise<void> {
-  let json: unknown;
-  try {
-    json = JSON.parse(raw.toString());
-  } catch {
-    console.warn("[ingestion] dropped message: not valid JSON");
-    return;
-  }
-
+export async function ingestEvent(json: unknown): Promise<void> {
   const parsed = parseIncomingEvent(json);
   if (!parsed.success || !parsed.data) {
     console.warn(`[ingestion] dropped invalid event: ${parsed.error}`);
@@ -40,6 +33,23 @@ async function handleRawMessage(raw: WebSocket.RawData): Promise<void> {
     // the next one.
     console.error(`[ingestion] failed to process event ${parsed.data.event_id}:`, err);
   }
+}
+
+/**
+ * Handles a single raw WebSocket message from the simulator: parses the raw
+ * bytes as JSON, then delegates to the shared `ingestEvent` pipeline. Never
+ * throws — a non-JSON message is logged and dropped.
+ */
+async function handleRawMessage(raw: WebSocket.RawData): Promise<void> {
+  let json: unknown;
+  try {
+    json = JSON.parse(raw.toString());
+  } catch {
+    console.warn("[ingestion] dropped message: not valid JSON");
+    return;
+  }
+
+  await ingestEvent(json);
 }
 
 /**

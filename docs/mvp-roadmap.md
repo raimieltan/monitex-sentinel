@@ -38,7 +38,13 @@ don't need to touch it except where noted.
 
 ---
 
-## Slice 1 — Shared ingestion path + `POST /internal/events` ⬜
+## Slice 1 — Shared ingestion path + `POST /internal/events` ✅
+
+**Status: done and verified end-to-end.** `ingestEvent` extracted in
+`apps/api/src/services/ingestion.ts`, `POST /internal/events` added in
+`apps/api/src/routes/events.ts`. Verified: valid payload persists, triages,
+and broadcasts identically to the WS path; invalid payload returns `202` and
+is logged/dropped without being persisted.
 
 Unlocks the video worker (Slice 4) by giving it (and any future producer) a
 way into the same validate → persist → enqueue → broadcast pipeline that the
