@@ -115,14 +115,44 @@ function parseTriageJson(raw: string): Partial<TriageResult> {
   }
 }
 
+/**
+ * Wraps a real LLM provider and degrades to the deterministic stub the
+ * moment it hits a rate limit (e.g. OpenRouter's free-tier daily/per-minute
+ * caps). A 429 won't clear up within a BullMQ retry's backoff window, so
+ * retrying the same call is pointless — better to fall back immediately and
+ * keep the event moving than to burn all 3 attempts into a FAILED dead end.
+ * Other error types (timeouts, bad JSON, network blips) still propagate to
+ * the caller so BullMQ's normal retry/backoff applies.
+ */
+export class RateLimitFallbackTriageProvider implements TriageProvider {
+  private primary: TriageProvider;
+  private fallback: TriageProvider = new StubTriageProvider();
+
+  constructor(primary: TriageProvider) {
+    this.primary = primary;
+  }
+
+  async triage(event: EventRecord): Promise<TriageResult> {
+    try {
+      return await this.primary.triage(event);
+    } catch (err) {
+      if (!(err instanceof OpenAI.RateLimitError)) throw err;
+      console.warn(`[triage] rate limited, falling back to stub for event ${event.eventId}: ${err.message}`);
+      return this.fallback.triage(event);
+    }
+  }
+}
+
 let provider: TriageProvider | undefined;
 
 export function getTriageProvider(): TriageProvider {
   if (!provider) {
     if (env.OPENROUTER_API_KEY) {
-      provider = new OpenAICompatibleTriageProvider(env.OPENROUTER_API_KEY, env.OPENROUTER_MODEL, "https://openrouter.ai/api/v1");
+      provider = new RateLimitFallbackTriageProvider(
+        new OpenAICompatibleTriageProvider(env.OPENROUTER_API_KEY, env.OPENROUTER_MODEL, "https://openrouter.ai/api/v1"),
+      );
     } else if (env.OPENAI_API_KEY) {
-      provider = new OpenAICompatibleTriageProvider(env.OPENAI_API_KEY, env.TRIAGE_MODEL);
+      provider = new RateLimitFallbackTriageProvider(new OpenAICompatibleTriageProvider(env.OPENAI_API_KEY, env.TRIAGE_MODEL));
     } else {
       provider = new StubTriageProvider();
     }
