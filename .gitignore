@@ -15,3 +15,5 @@ apps/video-worker/models/*.onnx
 .DS_Store
 
 .claude
+
+Monitex_Technical_Assessment.pdf
