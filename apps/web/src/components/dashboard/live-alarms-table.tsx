@@ -21,9 +21,9 @@ export function LiveAlarmsTable({
   onResolve,
 }: LiveAlarmsTableProps) {
   return (
-    <div className="overflow-x-auto">
+    <div className="max-h-[70vh] overflow-x-auto overflow-y-auto">
       <table className="w-full border-collapse text-left">
-        <thead>
+        <thead className="sticky top-0 z-10">
           <tr className="border-b border-slate-200 bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
             {COLUMNS.map((col) => (
               <th key={col} className="whitespace-nowrap px-4 py-3 font-semibold">
