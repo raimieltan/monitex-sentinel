@@ -6,17 +6,39 @@ sensor/camera events to every connected client (the API's ingestion
 service). Occasionally fires a "burst" of several events in quick
 succession, and occasionally emits a deliberately malformed event, to
 exercise the API's validation and burst-handling behavior.
+
+Pacing is configurable via env vars (see .env.example) — turn burst
+frequency/size down or widen the inter-event delay if a downstream LLM
+provider's rate limit is getting hit harder than you want to demonstrate.
 """
 import asyncio
 import json
+import os
 import random
 import uuid
 from datetime import datetime, timezone
 
 import websockets
+from dotenv import load_dotenv
+
+load_dotenv()
 
 HOST = "localhost"
 PORT = 8765
+
+# Steady-state delay between single events (seconds).
+EVENT_INTERVAL_MIN_SECONDS = float(os.environ.get("EVENT_INTERVAL_MIN_SECONDS", "1.0"))
+EVENT_INTERVAL_MAX_SECONDS = float(os.environ.get("EVENT_INTERVAL_MAX_SECONDS", "3.0"))
+# Chance each cycle fires a burst instead of a single event.
+BURST_PROBABILITY = float(os.environ.get("BURST_PROBABILITY", "0.15"))
+# How many events land in one burst.
+BURST_MIN_SIZE = int(os.environ.get("BURST_MIN_SIZE", "3"))
+BURST_MAX_SIZE = int(os.environ.get("BURST_MAX_SIZE", "8"))
+# Delay between events within a burst (seconds) — the knob that most
+# directly controls how many triage requests/minute a burst generates.
+BURST_INTERVAL_SECONDS = float(os.environ.get("BURST_INTERVAL_SECONDS", "0.05"))
+# Chance of emitting a deliberately malformed event (missing "type").
+INVALID_EVENT_PROBABILITY = float(os.environ.get("INVALID_EVENT_PROBABILITY", "0.05"))
 
 EVENT_TYPES = [
     "motion_detected",
@@ -71,17 +93,17 @@ async def producer(websocket):
     try:
         while True:
             # Occasional burst of events to exercise queueing under load.
-            if random.random() < 0.15:
-                burst_size = random.randint(3, 8)
+            if random.random() < BURST_PROBABILITY:
+                burst_size = random.randint(BURST_MIN_SIZE, BURST_MAX_SIZE)
                 print(f"[simulator] emitting burst of {burst_size} events")
                 for _ in range(burst_size):
                     await websocket.send(json.dumps(make_event()))
-                    await asyncio.sleep(0.05)
+                    await asyncio.sleep(BURST_INTERVAL_SECONDS)
             else:
-                force_invalid = random.random() < 0.05
+                force_invalid = random.random() < INVALID_EVENT_PROBABILITY
                 await websocket.send(json.dumps(make_event(force_invalid)))
 
-            await asyncio.sleep(random.uniform(1.0, 3.0))
+            await asyncio.sleep(random.uniform(EVENT_INTERVAL_MIN_SECONDS, EVENT_INTERVAL_MAX_SECONDS))
     except websockets.exceptions.ConnectionClosed:
         print(f"[simulator] client disconnected: {websocket.remote_address}")
 
