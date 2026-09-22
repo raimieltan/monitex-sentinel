@@ -71,7 +71,19 @@ WebSocket path already uses, without duplicating that logic.
 
 ---
 
-## Slice 2 — Web dashboard shell: live event list ⬜
+## Slice 2 — Web dashboard shell: live event list ✅
+
+**Status: done and verified end-to-end.** Built `apps/web/src/lib/socket.ts`,
+`apps/web/src/lib/api.ts`, `apps/web/src/types/event.ts`,
+`apps/web/src/hooks/useEvents.ts`, `apps/web/src/components/EventCard.tsx`,
+and wired them into `apps/web/src/app/page.tsx`. Note: actual severity scale
+in the code is `low`/`medium`/`high`/`critical` (see
+`apps/api/src/services/triageProvider.ts`), not the `critical`/`warning`/
+`info` mentioned below — sorting follows the real 4-level scale. Verified
+with the full stack running (docker-compose, api, simulator, `yarn dev:web`):
+simulator events land in the dashboard live, `GET /` renders 200 with the
+initial "Loading events…" SSR state (no errors), and `GET /events` matches
+what the socket feed delivers.
 
 The single biggest remaining gap. `apps/web` is still the default
 `create-next-app` scaffold — nothing has been built yet.
