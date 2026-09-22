@@ -17,9 +17,12 @@ export const env = {
 
   SIMULATOR_WS_URL: optional("SIMULATOR_WS_URL", "ws://localhost:8765"),
 
-  // Triage prefers OpenRouter if configured, then falls back to OpenAI, then
-  // to a deterministic stub provider — the pipeline runs end-to-end either
-  // way. See services/triageProvider.ts's getTriageProvider().
+  // Triage prefers NVIDIA's integrate API if configured (highest free rate
+  // limit: 40 RPM / 10,000 RPD), then OpenRouter, then OpenAI, then falls
+  // back to a deterministic stub provider — the pipeline runs end-to-end
+  // either way. See services/triageProvider.ts's getTriageProvider().
+  NVIDIA_API_KEY: process.env.NVIDIA_API_KEY ?? "",
+  NVIDIA_MODEL: optional("NVIDIA_MODEL", "nvidia/nemotron-3-super-120b-a12b"),
   OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY ?? "",
   OPENROUTER_MODEL: optional("OPENROUTER_MODEL", "nvidia/nemotron-3-super-120b-a12b:free"),
   OPENAI_API_KEY: process.env.OPENAI_API_KEY ?? "",

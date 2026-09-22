@@ -147,7 +147,11 @@ let provider: TriageProvider | undefined;
 
 export function getTriageProvider(): TriageProvider {
   if (!provider) {
-    if (env.OPENROUTER_API_KEY) {
+    if (env.NVIDIA_API_KEY) {
+      provider = new RateLimitFallbackTriageProvider(
+        new OpenAICompatibleTriageProvider(env.NVIDIA_API_KEY, env.NVIDIA_MODEL, "https://integrate.api.nvidia.com/v1"),
+      );
+    } else if (env.OPENROUTER_API_KEY) {
       provider = new RateLimitFallbackTriageProvider(
         new OpenAICompatibleTriageProvider(env.OPENROUTER_API_KEY, env.OPENROUTER_MODEL, "https://openrouter.ai/api/v1"),
       );
